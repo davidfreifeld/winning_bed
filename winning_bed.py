@@ -1,3 +1,4 @@
+import pandas as pd
 from pulp import LpMaximize, LpProblem, LpStatus, lpSum, LpVariable
 
 class WinningBed:
@@ -127,3 +128,14 @@ class WinningBed:
                 if print_output:
                     print("Landed on exactly zero surplus - found optimal bids!")
                 return next_highest_bids
+            
+
+    def get_results_df(self, results_dict):
+        results_df = pd.DataFrame([['', 0.0]] * len(self.beds), columns=['Person', 'Price'], index=self.beds)
+        
+        for bed, price in results_dict.items():
+            print(f"Bed: {bed}; Price: {price}")
+            results_df['Person'][bed] = self.assignments_dict[bed]
+            results_df['Price'][bed] = price
+
+        return results_df

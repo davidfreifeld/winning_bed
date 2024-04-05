@@ -3,11 +3,19 @@ import pandas as pd
 
 from winning_bed import WinningBed
 
+if 'results_dict' not in st.session_state:
+    st.session_state.results_dict = {}
+
+if 'results_df' not in st.session_state:
+    st.session_state.results_df = pd.DataFrame()
+
 def on_run_click():
     this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost)
     this_winning_bed.init_maxsum_lp_problem()
     this_winning_bed.solve_maxsum_lp_problem()
-    this_winning_bed.calc_prices_brams_kilgour()
+    st.session_state.results_dict = this_winning_bed.calc_prices_brams_kilgour()
+    st.session_state.results_df = this_winning_bed.get_results_df(st.session_state.results_dict)
+    
 
 title = 'Winning Bed'
 st.set_page_config(page_title=title)
@@ -20,3 +28,5 @@ if uploaded_bids_file is not None:
 house_cost = st.number_input('Total cost of the rental', step=1, value=1900)
 
 st.button('Run', on_click=on_run_click, type="primary")
+
+st.dataframe(st.session_state.results_df, column_config={'Price': st.column_config.NumberColumn("Price", format="$ %d")})
