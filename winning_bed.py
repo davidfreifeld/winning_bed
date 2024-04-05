@@ -48,9 +48,9 @@ class WinningBed:
                     self.assignments_dict[bed] = person
 
 
-    def get_bids_from_assignments(self):
+    def get_bids_from_assignments(self, assignments_dict_p):
         bids_dict = {}
-        for bed, person in self.assignments_dict.items():
+        for bed, person in assignments_dict_p.items():
             bids_dict[bed] = self.bids_df.loc[person][bed]
         return bids_dict
 
@@ -64,9 +64,9 @@ class WinningBed:
         diffs_from_maxsum = {}
         
         # calculate the maxsum values; these won't change
-        maxsum_bids = self.get_bids_from_assignments()
+        maxsum_bids = self.get_bids_from_assignments(self.assignments_dict)
         maxsum = self.get_bids_total(maxsum_bids)
-        maxsum_surplus = maxsum - self.house_cost_p
+        maxsum_surplus = maxsum - self.house_cost
         
         if print_output:
             print(maxsum_bids)
@@ -104,7 +104,7 @@ class WinningBed:
                 diffs_from_maxsum[bed] = maxsum_bids[bed] - next_highest_bids[bed]
             
             current_bids_total = self.get_bids_total(self.get_bids_from_assignments(next_highest_bidders))
-            current_surplus = current_bids_total - self.house_cost_p
+            current_surplus = current_bids_total - self.house_cost
             diffs_from_maxsum_total = self.get_bids_total(diffs_from_maxsum)
             
             if print_output:
