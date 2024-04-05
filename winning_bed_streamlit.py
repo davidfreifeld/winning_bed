@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
 
-from winning_bed import WinningBed
-from winning_bed import algo_types
+from winning_bed import WinningBed, algo_types
 
 def on_run_click():
     this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost, algo_type=algo_type)
     st.session_state.results_df = this_winning_bed.run()
     
-title = 'Winning Bed'
+title = 'Wrong Side of the Bid'
 st.set_page_config(page_title=title)
 st.title(title)
 
@@ -29,4 +28,3 @@ st.button('Run', on_click=on_run_click, type="primary", use_container_width=True
 if 'results_df' in st.session_state:
     st.header('Results:')
     st.dataframe(st.session_state.results_df, column_config={'Price': st.column_config.NumberColumn("Price", format="$ %d")})
-    st.write(algo_type)
