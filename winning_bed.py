@@ -1,11 +1,14 @@
 import pandas as pd
 from pulp import LpMaximize, LpProblem, LpStatus, lpSum, LpVariable
 
+algo_types = ['Brams Kilgour (Maxsum+Second Price)', 'Some Other One']
+
 class WinningBed:
 
-    def __init__(self, bids_df, house_cost):
+    def __init__(self, bids_df, house_cost, algo_type):
         self.bids_df = bids_df
         self.house_cost = house_cost
+        self.algo_type = algo_type
         self.beds = self.bids_df.columns
         self.people = self.bids_df.index
 
@@ -139,3 +142,14 @@ class WinningBed:
             results_df['Price'][bed] = price
 
         return results_df
+    
+
+    def run(self):
+        if self.algo_type in ['Brams Kilgour (Maxsum+Second Price)']:
+            self.init_maxsum_lp_problem()
+            self.solve_maxsum_lp_problem()
+
+        if self.algo_type in ['Brams Kilgour (Maxsum+Second Price)']:
+            results_dict = self.calc_prices_brams_kilgour()
+            
+        return self.get_results_df(results_dict)
