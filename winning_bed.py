@@ -1,7 +1,7 @@
 import pandas as pd
 from pulp import LpMaximize, LpProblem, LpStatus, lpSum, LpVariable
 
-algo_types = ['Brams Kilgour (Maxsum+Second Price)', 'Some Other One']
+algo_types = ['Brams Kilgour (Maxsum+Second Price)']
 
 class WinningBed:
 
