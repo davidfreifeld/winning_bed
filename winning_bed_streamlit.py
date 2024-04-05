@@ -27,6 +27,8 @@ with right_col:
 
 st.button('Run', on_click=on_run_click, type="primary", use_container_width=True)
 
-if 'results_df' in st.session_state:
-    st.header('Results:')
-    st.dataframe(st.session_state.results_df, column_config={'Price': st.column_config.NumberColumn("Price", format="$ %d")})
+left_col, mid_col, right_col = st.columns(3)
+with mid_col:
+    if 'results_df' in st.session_state:
+        st.header('Results:')
+        st.dataframe(st.session_state.results_df, column_config={'Price': st.column_config.NumberColumn("Price", format="$ %d")})
