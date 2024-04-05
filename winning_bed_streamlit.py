@@ -11,9 +11,11 @@ title = 'Wrong Side of the Bid'
 st.set_page_config(page_title=title)
 st.title(title)
 
+st.write('See [here](%s) for information about the algorithms.' % 'https://en.wikipedia.org/wiki/Rental_harmony')
+
 left_col, right_col = st.columns(2)
 
-uploaded_bids_file = st.file_uploader(label='Bids CSV File', type='csv')
+uploaded_bids_file = st.file_uploader(label='Bed Bids CSV File', type='csv')
 if uploaded_bids_file is not None:
     bids_df = pd.read_csv(uploaded_bids_file, index_col=0)
 
