@@ -3,9 +3,6 @@ import pandas as pd
 
 from winning_bed import WinningBed
 
-if 'results_df' not in st.session_state:
-    st.session_state.results_df = pd.DataFrame()
-
 def on_run_click():
     this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost)
     this_winning_bed.init_maxsum_lp_problem()
@@ -27,6 +24,8 @@ with left_col:
 with right_col:
     house_cost = st.number_input('Total cost of the rental', step=1, value=1900)
 
-st.button('Run', on_click=on_run_click, type="primary")
+st.button('Run', on_click=on_run_click, type="primary", use_container_width=True)
 
-st.dataframe(st.session_state.results_df, column_config={'Price': st.column_config.NumberColumn("Price", format="$ %d")})
+if 'results_df' in st.session_state:
+    st.header('Results:')
+    st.dataframe(st.session_state.results_df, column_config={'Price': st.column_config.NumberColumn("Price", format="$ %d")})
