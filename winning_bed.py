@@ -1,7 +1,7 @@
 import pandas as pd
-from pulp import LpMaximize, LpProblem, LpStatus, lpSum, LpVariable
+from pulp import LpMaximize, LpMinimize, LpProblem, LpStatus, lpSum, LpVariable
 
-algo_types = ['Brams Kilgour (Maxsum+Second Price)']
+algo_types = ['Brams Kilgour (Maxsum+Second Price)', 'Sung Vlach (Maxsum+Minsum Prices)']
 
 class WinningBed:
 
@@ -13,38 +13,36 @@ class WinningBed:
         self.people = self.bids_df.index
 
 
-    def init_maxsum_lp_problem(self):
-
-        ## TODO: can make this cleaner        
+    def init_maxsum_lp_problem(self):    
         ## initialize the variables
-        self.beds_vars = {}
-        for person, row in self.bids_df.iterrows():
-            self.beds_vars[person] = {}
-            for bed, _ in row.items():
-                self.beds_vars[person][bed] = LpVariable(name=f"{person}_{bed}", cat="Binary")
+        self.maxsum_vars = {}
+        for person in self.people:
+            self.maxsum_vars[person] = {}
+            for bed in self.beds:
+                self.maxsum_vars[person][bed] = LpVariable(name=f"{person}_{bed}", cat="Binary")
 
-        self.model = LpProblem(name="beds", sense=LpMaximize)
+        self.maxsum_model = LpProblem(name="maxsum", sense=LpMaximize)
 
-        self.model += lpSum( [ [ self.bids_df.loc[person][bed] * self.beds_vars[person][bed] for person in self.people ] for bed in self.beds ] )
+        self.maxsum_model += lpSum( [ [ self.bids_df.loc[person][bed] * self.maxsum_vars[person][bed] for person in self.people ] for bed in self.beds ] )
 
         for person in self.people:
-            self.model += lpSum( [self.beds_vars[person][bed] for bed in self.beds ] ) <= 1
+            self.maxsum_model += lpSum( [self.maxsum_vars[person][bed] for bed in self.beds ] ) <= 1
             
         for bed in self.beds:
-            self.model += lpSum( [self.beds_vars[person][bed] for person in self.people ] ) == 1
+            self.maxsum_model += lpSum( [self.maxsum_vars[person][bed] for person in self.people ] ) == 1
 
 
     def solve_maxsum_lp_problem(self, print_output=True):
-        self.model.solve()
+        self.maxsum_model.solve()
 
-        solved_variables_dict = self.model.variablesDict()
+        solved_variables_dict = self.maxsum_model.variablesDict()
 
         if print_output:
             print('\t' + '\t'.join(self.beds))
             for person in self.people:
                 print(person + '\t' + '\t'.join([str(int(solved_variables_dict[f"{person}_{bed}"].value())) for bed in self.beds]))
 
-        # turn the pulp variables dict into a regular dict, and calculate maxsum
+        # turn the pulp variables dict into a regular dict
         self.assignments_dict = {}
         for bed in self.beds:
             for person in self.people:
@@ -52,6 +50,49 @@ class WinningBed:
                     self.assignments_dict[bed] = person
 
 
+    def init_minsum_lp_problem(self):
+        # initialize the variables, which are the prices for each bed. we already have the assignments
+        self.minsum_vars = {}
+        for bed in self.beds:
+            ## TODO: lowBound?
+            self.minsum_vars[bed] = LpVariable(name=f"{bed}")
+
+        self.minsum_model = LpProblem(name="minsum", sense=LpMinimize)
+
+        # no one should have envy
+        for this_bed in self.beds:
+            this_person = self.assignments_dict[this_bed]
+            this_person_bid = self.bids_df[this_bed][this_person]
+            this_person_surplus = this_person_bid - self.minsum_vars[this_bed]
+            
+            for other_bed in self.beds:
+                if this_bed != other_bed:
+                    other_person = self.assignments_dict[other_bed]
+                    other_person_bid = self.bids_df[other_bed][other_person]
+                    other_person_surplus = other_person_bid - self.minsum_vars[other_bed]
+                    
+                    # my "surplus" should be at least as good as the other person's
+                    self.minsum_model += this_person_surplus - other_person_surplus >= 0
+
+        # prices should be at least the cost of the house
+        self.minsum_model += lpSum( [ self.minsum_vars[bed] for bed in self.beds ] ) >= self.house_cost
+
+        self.minsum_model += lpSum( [ self.minsum_vars[bed] for bed in self.beds ] )
+
+    
+    def solve_minsum_lp_problem(self):
+        self.minsum_model.solve()
+
+        solved_variables_dict = self.minsum_model.variablesDict()
+
+        # turn the pulp variables dict into a regular dict
+        minsum_prices_dict = {}
+        for bed in self.beds:
+            minsum_prices_dict[bed] = solved_variables_dict[f"{bed}"].value()
+        
+        return minsum_prices_dict
+            
+        
     def get_bids_from_assignments(self, assignments_dict_p):
         bids_dict = {}
         for bed, person in assignments_dict_p.items():
@@ -145,11 +186,15 @@ class WinningBed:
     
 
     def run(self):
-        if self.algo_type in ['Brams Kilgour (Maxsum+Second Price)']:
+        if self.algo_type in ['Brams Kilgour (Maxsum+Second Price)', 'Sung Vlach (Maxsum+Minsum Prices)']:
             self.init_maxsum_lp_problem()
             self.solve_maxsum_lp_problem()
 
         if self.algo_type in ['Brams Kilgour (Maxsum+Second Price)']:
             results_dict = self.calc_prices_brams_kilgour()
+
+        if self.algo_type in ['Sung Vlach (Maxsum+Minsum Prices)']:
+            self.init_minsum_lp_problem()
+            results_dict = self.solve_minsum_lp_problem()
             
         return self.get_results_df(results_dict)
