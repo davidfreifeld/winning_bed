@@ -5,10 +5,9 @@ algo_types = ['Brams Kilgour (Maxsum+Second Price)', 'Sung Vlach (Maxsum+Minsum 
 
 class WinningBed:
 
-    def __init__(self, bids_df, house_cost, algo_type):
+    def __init__(self, bids_df, house_cost):
         self.bids_df = bids_df
         self.house_cost = house_cost
-        self.algo_type = algo_type
         self.beds = self.bids_df.columns
         self.people = self.bids_df.index
 
@@ -48,6 +47,23 @@ class WinningBed:
             for person in self.people:
                 if int(solved_variables_dict[f"{person}_{bed}"].value()):
                     self.assignments_dict[bed] = person
+
+        # calculate the maxsum values; these won't change
+        self.maxsum_bids = self.get_bids_from_assignments(self.assignments_dict)
+        self.maxsum = self.get_bids_total(self.maxsum_bids)
+        self.maxsum_surplus = self.maxsum - self.house_cost
+        
+        if print_output:
+            print(self.maxsum_bids)
+            print(f"Initial maxsum surplus: {self.maxsum_surplus}\n")
+        
+        if self.maxsum_surplus < 0:
+            if print_output:
+                print(f"Maxsum is {self.maxsum}; Problem is infeasible!")
+            return 0
+        else:
+            print(f"Maxsum is {self.maxsum}")
+            return 1
 
 
     def init_minsum_lp_problem(self):
@@ -108,29 +124,16 @@ class WinningBed:
 
         diffs_from_maxsum = {}
         
-        # calculate the maxsum values; these won't change
-        maxsum_bids = self.get_bids_from_assignments(self.assignments_dict)
-        maxsum = self.get_bids_total(maxsum_bids)
-        maxsum_surplus = maxsum - self.house_cost
-        
-        if print_output:
-            print(maxsum_bids)
-            print(f"Initial maxsum surplus: {maxsum_surplus}\n")
-        
-        if maxsum_surplus < 0:
-            if print_output:
-                print(f"Maxsum is {maxsum}; Problem is infeasible!")
-            return
-        elif maxsum_surplus == 0:
+        if self.maxsum_surplus == 0:
             if print_output:
                 print("Maxsum is equal to house cost - all done!")
-            return maxsum_bids
+            return self.maxsum_bids
 
         # initialize the loop variables
         next_highest_bidders = self.assignments_dict.copy()
-        next_highest_bids = maxsum_bids.copy()
-        current_bids_total = maxsum
-        current_surplus = maxsum_surplus
+        next_highest_bids = self.maxsum_bids.copy()
+        current_bids_total = self.maxsum
+        current_surplus = self.maxsum_surplus
 
         while current_surplus > 0:
             
@@ -146,7 +149,7 @@ class WinningBed:
                     next_highest_bidders[bed] = next_highest_bidder
                     next_highest_bids[bed] = next_highest_bid
                 
-                diffs_from_maxsum[bed] = maxsum_bids[bed] - next_highest_bids[bed]
+                diffs_from_maxsum[bed] = self.maxsum_bids[bed] - next_highest_bids[bed]
             
             current_bids_total = self.get_bids_total(self.get_bids_from_assignments(next_highest_bidders))
             current_surplus = current_bids_total - self.house_cost
@@ -160,7 +163,7 @@ class WinningBed:
                     print(f"Surplus is {current_surplus}. Allocating proportionally...")
                 
                 for bed in self.beds:
-                    next_highest_bids[bed] = round(maxsum_bids[bed] - ((diffs_from_maxsum[bed] / diffs_from_maxsum_total) * float(maxsum_surplus)), 2)
+                    next_highest_bids[bed] = round(self.maxsum_bids[bed] - ((diffs_from_maxsum[bed] / diffs_from_maxsum_total) * float(self.maxsum_surplus)), 2)
                 
                 if print_output:    
                     print("Found optimal bids!")
@@ -183,18 +186,3 @@ class WinningBed:
             results_df['Price'][bed] = price
 
         return results_df
-    
-
-    def run(self):
-        if self.algo_type in ['Brams Kilgour (Maxsum+Second Price)', 'Sung Vlach (Maxsum+Minsum Prices)']:
-            self.init_maxsum_lp_problem()
-            self.solve_maxsum_lp_problem()
-
-        if self.algo_type in ['Brams Kilgour (Maxsum+Second Price)']:
-            results_dict = self.calc_prices_brams_kilgour()
-
-        if self.algo_type in ['Sung Vlach (Maxsum+Minsum Prices)']:
-            self.init_minsum_lp_problem()
-            results_dict = self.solve_minsum_lp_problem()
-            
-        return self.get_results_df(results_dict)

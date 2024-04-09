@@ -3,9 +3,31 @@ import pandas as pd
 
 from winning_bed import WinningBed, algo_types
 
+## TODO:
+## error message instead of crash if no csv file
+
 def on_run_click():
-    this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost, algo_type=algo_type)
-    st.session_state.results_df = this_winning_bed.run()
+
+    # reset the results DF and the error message
+    st.session_state.results_df = pd.DataFrame(columns=['Person', 'Price'])
+    st.session_state.error_msg = ''
+
+    this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost)
+
+    if algo_type in ['Brams Kilgour (Maxsum+Second Price)', 'Sung Vlach (Maxsum+Minsum Prices)']:
+        this_winning_bed.init_maxsum_lp_problem()
+        maxsum_status = this_winning_bed.solve_maxsum_lp_problem()
+        if maxsum_status == 0:
+            st.session_state.error_msg = 'Bids are too low - no assignment of beds will meet the cost of the house!'
+        else:
+            if algo_type == 'Brams Kilgour (Maxsum+Second Price)':
+                results_dict = this_winning_bed.calc_prices_brams_kilgour()
+            elif algo_type == 'Sung Vlach (Maxsum+Minsum Prices)':
+                this_winning_bed.init_minsum_lp_problem()
+                results_dict = this_winning_bed.solve_minsum_lp_problem()
+        
+            st.session_state.results_df = this_winning_bed.get_results_df(results_dict)
+        
     
 title = 'Wrong Side of the Bid'
 st.set_page_config(page_title=title)
@@ -32,3 +54,5 @@ with mid_col:
     if 'results_df' in st.session_state:
         st.header('Results:')
         st.dataframe(st.session_state.results_df, column_config={'Price': st.column_config.NumberColumn("Price", format="$ %d")})
+    if 'error_msg' in st.session_state:
+        st.write(":red[" + st.session_state.error_msg + "]")
