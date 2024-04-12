@@ -1,34 +1,120 @@
 import pandas as pd
+import re
 from pulp import LpMaximize, LpMinimize, LpProblem, LpStatus, lpSum, LpVariable
 
 algo_types = ['Brams Kilgour (Maxsum+Second Price)', 'Sung Vlach (Maxsum+Minsum Prices)']
 
 class WinningBed:
 
-    def __init__(self, bids_df, house_cost):
+    def __init__(self, bids_df, house_cost, allow_multiperson_beds, mp_bids_df=None, mp_capacity_df=None):
         self.bids_df = bids_df
         self.house_cost = house_cost
-        self.beds = self.bids_df.columns
-        self.people = self.bids_df.index
+        
+        self.beds_dict = {}
+
+        self.people_dict = {}
+        for person in self.bids_df.index.to_list():
+            self.people_dict[person] = ""
+
+        self.allow_multiperson_beds = allow_multiperson_beds
+        
+        print('\n\n')
+        print('====================================')
+        print('Initializing Winning Bed Object')
+        print('====================================')
+        print('\n')
+
+        if self.allow_multiperson_beds:
+            self.mp_bids_df = mp_bids_df
+            self.mp_capacity_df = mp_capacity_df
+            self.couples = self.mp_bids_df.index.to_list()
+
+            print("Multiperson Bed Capacity Data Frame:")
+            print(mp_capacity_df)
+            print('\n')
+
+            for bed, row in self.mp_capacity_df.iterrows():
+                self.beds_dict[bed] = int(row['Capacity'])
+
+            couple_pattern = re.compile("(.*)\\+(.*)")
+
+            for couple in self.mp_bids_df.index.to_list():
+                couple_match = couple_pattern.match(couple)
+                self.people_dict[couple_match[1]] = couple
+                self.people_dict[couple_match[2]] = couple
+            
+            print("Couples list:")
+            print(self.couples)
+            print('\n')
+        
+        else:
+            for bed in self.bids_df.columns:
+                self.beds_dict[bed] = 1
+
+        print('People and couples dictionary:')
+        print(self.people_dict)
+        print('\n')
+        print('Beds and capacities dictionary:')
+        print(self.beds_dict)
+        print('\n\n')
 
 
-    def init_maxsum_lp_problem(self):    
+    def init_maxsum_lp_problem(self, print_model=False):    
         ## initialize the variables
         self.maxsum_vars = {}
-        for person in self.people:
+        for person in self.people_dict.keys():
             self.maxsum_vars[person] = {}
-            for bed in self.beds:
+            for bed in self.beds_dict.keys():
                 self.maxsum_vars[person][bed] = LpVariable(name=f"{person}_{bed}", cat="Binary")
+
+        if self.allow_multiperson_beds:
+            for couple in self.couples:
+                self.maxsum_vars[couple] = {}
+                for bed, capacity in self.beds_dict.items():
+                    if capacity == 2:
+                        self.maxsum_vars[couple][bed] = LpVariable(name=f"{couple}_{bed}", cat="Binary")
 
         self.maxsum_model = LpProblem(name="maxsum", sense=LpMaximize)
 
-        self.maxsum_model += lpSum( [ [ self.bids_df.loc[person][bed] * self.maxsum_vars[person][bed] for person in self.people ] for bed in self.beds ] )
+        ## single person beds and bids
+        objective_list = [ [ self.bids_df.loc[person][bed] * self.maxsum_vars[person][bed] for person in self.people_dict.keys() ] for bed in self.beds_dict.keys() ]
 
-        for person in self.people:
-            self.maxsum_model += lpSum( [self.maxsum_vars[person][bed] for bed in self.beds ] ) <= 1
+        ## couples beds and bids
+        if self.allow_multiperson_beds:
+            objective_list += [ [ self.mp_bids_df.loc[couple][bed] * self.maxsum_vars[couple][bed] for couple in self.couples ] for bed, capacity in self.beds_dict.items() if capacity == 2 ]
+
+        self.maxsum_model += lpSum(objective_list)
+
+        # each person needs a bed
+        for person, couple in self.people_dict.items():
+
+            person_constraint = [ self.maxsum_vars[person][bed] for bed in self.beds_dict.keys() ]
+
+            if self.allow_multiperson_beds and couple != '':
+                person_constraint += [ self.maxsum_vars[couple][bed] for bed, capacity in self.beds_dict.items() if capacity == 2 ]
+
+            self.maxsum_model += lpSum( person_constraint ) == 1
+        
+        for bed, capacity in self.beds_dict.items():
             
-        for bed in self.beds:
-            self.maxsum_model += lpSum( [self.maxsum_vars[person][bed] for person in self.people ] ) == 1
+            # each bed can have at most its capacity number of people in it
+            bed_constraint = [ self.maxsum_vars[person][bed] for person in self.people_dict.keys() ]
+
+            if self.allow_multiperson_beds and capacity == 2:
+                bed_constraint += [ 2 * self.maxsum_vars[couple][bed] for couple in self.couples ]
+
+                # two people who are not a couple can't be in the same bed
+                for this_person, this_couple in self.people_dict.items():
+                    for that_person, that_couple in self.people_dict.items():
+                        if this_person != that_person and this_couple != that_couple:
+                            self.maxsum_model += self.maxsum_vars[this_person][bed] + self.maxsum_vars[that_person][bed] <= 1
+            
+            self.maxsum_model += lpSum( bed_constraint ) <= capacity
+
+        if print_model:
+            print('\n\n')
+            print(self.maxsum_model)
+            print('\n\n')
 
 
     def solve_maxsum_lp_problem(self, print_output=True):
@@ -37,14 +123,20 @@ class WinningBed:
         solved_variables_dict = self.maxsum_model.variablesDict()
 
         if print_output:
-            print('\t' + '\t'.join(self.beds))
-            for person in self.people:
-                print(person + '\t' + '\t'.join([str(int(solved_variables_dict[f"{person}_{bed}"].value())) for bed in self.beds]))
+            print('\t' + '\t'.join(self.beds_dict.keys()))
+            for person, couple in self.people_dict.items():
+                bed_result_list = []
+                for bed, capacity in self.beds_dict.items():
+                    is_in_bed_int = int(solved_variables_dict[f"{person}_{bed}"].value())
+                    if capacity == 2 and couple != '':
+                        is_in_bed_int += int(solved_variables_dict[f"{couple.replace('+', '_')}_{bed}"].value())
+                    bed_result_list += [ str(is_in_bed_int) ]
+                print(person + '\t' + '\t'.join(bed_result_list))
 
         # turn the pulp variables dict into a regular dict
         self.assignments_dict = {}
-        for bed in self.beds:
-            for person in self.people:
+        for bed in self.beds_dict.keys():
+            for person in self.people_dict.keys():
                 if int(solved_variables_dict[f"{person}_{bed}"].value()):
                     self.assignments_dict[bed] = person
 
@@ -69,7 +161,7 @@ class WinningBed:
     def init_minsum_lp_problem(self):
         # initialize the variables, which are the prices for each bed. we already have the assignments
         self.minsum_vars = {}
-        for bed in self.beds:
+        for bed in self.beds_dict.keys():
             ## TODO: lowBound?
             self.minsum_vars[bed] = LpVariable(name=f"{bed}")
 
@@ -91,9 +183,9 @@ class WinningBed:
                     self.minsum_model += this_person_surplus - other_person_surplus >= 0
 
         # prices should be at least the cost of the house
-        self.minsum_model += lpSum( [ self.minsum_vars[bed] for bed in self.beds ] ) >= self.house_cost
+        self.minsum_model += lpSum( [ self.minsum_vars[bed] for bed in self.beds_dict.keys() ] ) >= self.house_cost
 
-        self.minsum_model += lpSum( [ self.minsum_vars[bed] for bed in self.beds ] )
+        self.minsum_model += lpSum( [ self.minsum_vars[bed] for bed in self.beds_dict.keys() ] )
 
     
     def solve_minsum_lp_problem(self):
@@ -103,7 +195,7 @@ class WinningBed:
 
         # turn the pulp variables dict into a regular dict
         minsum_prices_dict = {}
-        for bed in self.beds:
+        for bed in self.beds_dict.keys():
             minsum_prices_dict[bed] = solved_variables_dict[f"{bed}"].value()
         
         return minsum_prices_dict
@@ -137,7 +229,7 @@ class WinningBed:
 
         while current_surplus > 0:
             
-            for bed in self.beds:
+            for bed in self.beds_dict.keys():
                 
                 # is there a lower bid?
                 if next_highest_bids[bed] > self.bids_df[bed].min():
@@ -162,7 +254,7 @@ class WinningBed:
                 if print_output:
                     print(f"Surplus is {current_surplus}. Allocating proportionally...")
                 
-                for bed in self.beds:
+                for bed in self.beds_dict.keys():
                     next_highest_bids[bed] = round(self.maxsum_bids[bed] - ((diffs_from_maxsum[bed] / diffs_from_maxsum_total) * float(self.maxsum_surplus)), 2)
                 
                 if print_output:    
@@ -178,7 +270,7 @@ class WinningBed:
             
 
     def get_results_df(self, results_dict):
-        results_df = pd.DataFrame([['', 0.0]] * len(self.beds), columns=['Person', 'Price'], index=self.beds)
+        results_df = pd.DataFrame([['', 0.0]] * len(self.beds_dict.keys()), columns=['Person', 'Price'], index=self.beds_dict.keys())
         
         for bed, price in results_dict.items():
             print(f"Bed: {bed}; Price: {price}")

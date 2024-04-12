@@ -5,14 +5,30 @@ from winning_bed import WinningBed, algo_types
 
 ## TODO:
 ## error message instead of crash if no csv file
+## output bid price as well as paid price?
+## functionality for couples / single vs double beds
+##     got to the point just before where turn pulp vars into dictionary
 
 def on_run_click():
+
+    if uploaded_bids_file is None:
+        st.write(":red[Please upload a bed bids file]")
+        return
+    if allow_multiperson_beds and uploaded_multiperson_bids_file is None:
+        st.write(":red[Please upload a multiperson bed bids file]")
+        return
+    if allow_multiperson_beds and uploaded_bed_capacities_file is None:
+        st.write(":red[Please upload a bed capacities file]")
+        return
 
     # reset the results DF and the error message
     st.session_state.results_df = pd.DataFrame(columns=['Person', 'Price'])
     st.session_state.error_msg = ''
 
-    this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost)
+    if allow_multiperson_beds:
+        this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost, allow_multiperson_beds=allow_multiperson_beds, mp_bids_df=mp_bids_df, mp_capacity_df=mp_capacity_df)
+    else:
+        this_winning_bed = WinningBed(bids_df=bids_df, house_cost=house_cost, allow_multiperson_beds=allow_multiperson_beds)
 
     if algo_type in ['Brams Kilgour (Maxsum+Second Price)', 'Sung Vlach (Maxsum+Minsum Prices)']:
         this_winning_bed.init_maxsum_lp_problem()
@@ -35,17 +51,33 @@ st.title(title)
 
 st.write('See [here](%s) for information about the algorithms.' % 'https://en.wikipedia.org/wiki/Rental_harmony')
 
-left_col, right_col = st.columns(2)
+allow_multiperson_beds = st.checkbox("Allow Multi-Person Beds?", value=True)
 
-uploaded_bids_file = st.file_uploader(label='Bed Bids CSV File', type='csv')
-if uploaded_bids_file is not None:
-    bids_df = pd.read_csv(uploaded_bids_file, index_col=0)
+left_col, right_col = st.columns(2)
 
 with left_col:
     house_cost = st.number_input('Total cost of the rental', step=1, value=1900)
 
 with right_col:
     algo_type = st.selectbox('Algo to Use', algo_types)
+
+uploaded_bids_file = st.file_uploader(label='Bed Bids CSV File', type='csv')
+if uploaded_bids_file is not None:
+    bids_df = pd.read_csv(uploaded_bids_file, index_col=0)
+
+if allow_multiperson_beds:
+
+    mp_left_col, mp_right_col = st.columns(2)
+
+    with mp_left_col:
+        uploaded_multiperson_bids_file = st.file_uploader(label='Multiperson Bed Bids CSV File', type='csv')
+        if uploaded_multiperson_bids_file is not None:
+            mp_bids_df = pd.read_csv(uploaded_multiperson_bids_file, index_col=0)
+
+    with mp_right_col:
+        uploaded_bed_capacities_file = st.file_uploader(label='Bed Cacpacities CSV File', type='csv')
+        if uploaded_bed_capacities_file is not None:
+            mp_capacity_df = pd.read_csv(uploaded_bed_capacities_file, index_col=0)
 
 st.button('Run', on_click=on_run_click, type="primary", use_container_width=True)
 
